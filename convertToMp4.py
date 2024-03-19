@@ -1,30 +1,38 @@
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from pathlib import Path
-from moviepy.editor import VideoFileClip
-from tqdm import tqdm
+# Importing required libraries
 import os
+import subprocess
+from alive_progress import alive_bar
 
-def convert_video_to_mp4(video_path, output_path):
-    """
-    Converts a video from webm format to mp4 format using moviepy.
-    """
-    clip = VideoFileClip(str(video_path))
-    clip.write_videofile(str(output_path), audio=False, logger=None)  # logger=None to suppress the printing
-    clip.close()
+SOURCE_PATH = r"C:\Users\RENMA\Downloads\Main Setlist"  # Carpeta con videos
 
-def process_videos(folder_path, max_threads):
-    """
-    Searches for all webm files in the given folder and its subfolders,
-    and converts them to mp4 format in parallel.
-    """
-    folder_path = Path(folder_path)
-    webm_files = list(folder_path.rglob("*.webm"))  # List all webm files
+# Function to find all 'video.webm' files in a directory and its subdirectories
+def find_webm_files(directory):
+    webm_files = []
+    for root, _, files in os.walk(directory):
+        for file in files:
+            if file == "video.webm":
+                webm_files.append(os.path.join(root, file))
+    return webm_files
 
-    with ThreadPoolExecutor(max_workers=max_threads) as executor:
-        futures = {executor.submit(convert_video_to_mp4, webm_file, webm_file.with_suffix('.mp4')): webm_file for webm_file in webm_files}
+# Function to convert 'video.webm' to 'video.mp4' without audio using GPU acceleration
+def convert_video(file_path):
+    output_path = file_path.replace('.webm', '.mp4')
+    # Command to use ffmpeg with GPU acceleration and no audio
+    command = ['ffmpeg', '-y', '-i', file_path, '-c:v', 'h264_nvenc', '-preset', 'slow', '-cq', '28', '-an', output_path]
+    subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
 
-        for future in tqdm(as_completed(futures), total=len(futures), desc="Converting Videos"):
-            future.result()  # to raise exceptions if any
+# Main function to process videos sequentially
+def process_videos(directory):
+    webm_files = find_webm_files(directory)
+    total_files = len(webm_files)
+    
+    with alive_bar(total_files, title='Overall Conversion Progress', bar='smooth') as bar:
+        for file in webm_files:
+            folder_name = os.path.basename(os.path.dirname(file))
+            print(f"Starting conversion of {folder_name}...")  
+            convert_video(file)
+            bar()
 
-# Uncomment the following line to use the function with your specific folder path and max_threads
-# process_videos("/path/to/your/folder", 4)
+if __name__ == '__main__':
+    print("Converting videos from webm to mp4...")
+    process_videos(SOURCE_PATH)
